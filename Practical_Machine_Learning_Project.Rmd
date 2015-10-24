@@ -1,0 +1,91 @@
+
+## Personal Activity Prediction Using Device/Sensor Data
+
+Author: Felix Liao
+
+### Executive Summary
+
+The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict how well they performed a particular exercise activity. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. We will use machine learning methods to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+### Data Processing and Preparation
+
+We will firt set seeds (reproducibile) load the caret package and training and test dataset
+
+```{r}
+set.seed(123)
+library("caret", quietly =TRUE)
+training<- read.csv(file="pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE)
+testing<- read.csv(file="pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE)
+```
+
+The training data set has large number of variables that contain empty values (NA) and are useless for training the model. We will first remove columns that are mostly NA (more than 95% NA) and columns that shows near zero variability.
+
+```{r}
+NA_Index <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[, NA_Index==F]
+
+zerovar_index <- nearZeroVar(training)
+training <- training[, -zerovar_index]
+```
+
+Furthermore, we will remove other irelevant variables to speed up the modelling process. These include X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp.
+
+```{r}
+training <- training[, -(1:5)]
+```
+
+To support cross-validation, we will then partition our taining set into training and validation data sets.
+
+```{r}
+Train_index <- createDataPartition(y=training$classe, p=0.7, list=F)
+training$classe <- factor(training$classe)
+cTrain <- training[Train_index, ]
+cTest <- training[-Train_index, ]
+```
+
+### Model testing and development
+
+Being one of the most effctive modelling technique against categorical target variable, we will start with using basic decision tree (rpart) to fit a model in predicting the activitiy class.
+
+```{r}
+dt_model <- train(classe ~., method="rpart", data=cTrain)
+print(dt_model$finalModel)
+```
+
+Reviewing the accuracy of the model, the accuracy is very poor at 0.4933
+```{r}
+dtmodel_predict=predict(dt_model,cTest)
+confusionMatrix(cTest$classe,dtmodel_predict)
+```
+We will now try to improve the accuracy using Random Forest.
+
+```{r}
+rf_model <- train(classe ~., method="rf", data=cTrain, trControl=trainControl(method='cv'), number=3)
+rfmodel_predict=predict(rf_model,cTest)
+confusionMatrix(cTest$classe,rfmodel_predict)
+```
+Using Random Forest, we were able to achieve an accuracy of 99.75 percent, significant better than what was achieved using standard claddication tree and this would be the mode we use for the prediction.
+
+### In Sample & Out of Sample Error
+
+We will now compare the in sample and out of sample error. The in sample error is error rate when the model is used to predict the training set it is trained on and is expected to be lower than the out of sample error rate.
+
+```{r}
+insamplepredict=predict(rf_model,cTrain)
+confusionMatrix(cTrain$classe,insamplepredict)
+```
+
+In this case, the in sample error rate is 0 (smaller than the out of sample error rate which is 0.25) as the model got 100% of the prediction rignt against the training set. This is to be expected due to overfitting of the model against the training set.
+
+### Predict test data using newly built random forest based model
+
+```{r}
+predictions <- predict(rf_model, newdata=testing)
+predictions
+```
+
+
+
+
